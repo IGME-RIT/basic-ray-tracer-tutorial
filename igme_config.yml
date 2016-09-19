@@ -10,7 +10,8 @@ tags:
   - Graphics
   - Math
 extra_resources:
-  - "https://github.com/LWJGL/lwjgl3-wiki/wiki/2.6.1.-Ray-tracing-with-OpenGL-Compute-Shaders-(Part-I)"
+  - title: Ray Tracing With Compute Shaders
+    link: https://github.com/LWJGL/lwjgl3-wiki/wiki/2.6.1.-Ray-tracing-with-OpenGL-Compute-Shaders-(Part-I)
 connections:
   - series: Basic OpenGL with GLFW
     title: Drawing a Cube
