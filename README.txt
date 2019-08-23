@@ -9,7 +9,7 @@ from the Visual Studio Installer Tool
 Welcome to the Geometry Ray Tracing Tutorial!
 Prerequesites: 
 	"More Graphics" section, 
-	Instanced Render Particles (procedurally-generate a quad)
+	Procedurally-generate a quad
 
 Quick tip: try opening GLSL files in Notepad++,
 then go to Language -> C -> C, to color-code the shader
@@ -27,6 +27,8 @@ understood in this tutorial.
 {
 	Initialize GLFW,
 	Make a window,
+	Set Resize Callback
+	Make Context
 	set swap interval,
 	
 	call init()
@@ -36,22 +38,24 @@ understood in this tutorial.
 		link the program
 		activate the program (glUseProgram)
 		create uniform for "eye" and four rays
-		call calcCameraRays (for four rays)
-		set all 5 uniforms (eye and four rays)
 	
 	enter while loop
 	
-		call update()
+		call renderScene()      -- this can be split into render() and upate()
 			update elapsed time
 			calculate frame rate
 			change window title
 			update camera position (eye)
-			call calcCameraRays
-			update all 5 uniforms
-	
-		call renderScene()
-			clear screen
+			call calcCameraRays (for four rays)
+			set all 5 uniforms (eye and four rays)
 			draw 4 vertices (no VAO or VBO needed)
+			
+		Swap Buffers
+		Poll Events
+		
+	Leave While Loop
+	Delete Shaders
+	Terminate GLFW
 }
 
 Just like deferred rendering, we use the Vertex Shader
@@ -95,11 +99,13 @@ Camera position simply rotates around the world
 the position we focus on is (0, 0.5, 0), which is
 slightly above the origin of the world.
 Our up vector is (0, 1, 0), which means the Y-axis
-points upward. Our aspect ratio is 800/600, which
-is window width divided by height, then we pass
-pointers to our 4 vec4 rays (r00, r01, r10, r11).
-After that, we set the Uniforms, which are explained
-in prerequisites.
+points upward. Our aspect ratio is window width divided 
+by height, and the Field of View is 45 degrees.
+We give all this to teh calcCameraRays function, which
+gives us the 4 rays that make our Frustum, each one is in 
+a different corner of the screen. We pass these rays to
+the Fragment Shader through four uniforms, then the fragment
+shader uses these four rays to generate rays for every pixel.
 
 [Vertex Shader]
 We generate a quad to cover the screen by using 
@@ -192,7 +198,7 @@ or returns "false" if no triangle is hit.
 If intersectTriangles returns true, we take the "index" variable
 of hitInfo, it tells us which triangle the ray hit, and then 
 we get the color of that triangle: 
-	triangles[i.index].color.rgb
+	triangles[eyeHitTriangle.index].color.rgb
 If the ray does not hit anything, if intersectTriangles returns
 "false", then we return black 
 	vec4(0.0, 0.0, 0.0, 1.0);
@@ -221,6 +227,14 @@ to determine if any polygon is hit.
 
 We loop through every triangle:
 	for(int i = 0; i < NUM_TRIANGLES; i++)
+	
+Before we check any triangles for collisions with our rays, therea
+are some triangles we can exclude from the search. We know which
+direction a triangle faces (the normal), and we know which 
+direction the ray travels in (dir), so we can detect if a polygon
+faces the ray with a simple dot product. If the triangle does
+not face the ray, use "continue" which skips to the next triangle
+in the 'for' loop.
 	
 We get a float from rayIntersectsTriangle, which checks to see if the ray
 intersected with the current triangle we are looking at in the "for" loop.

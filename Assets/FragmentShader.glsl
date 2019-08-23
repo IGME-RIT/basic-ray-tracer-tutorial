@@ -1,8 +1,8 @@
 /*
-Title: Basic Ray Tracer
+Title: Advanced Ray Tracer
 File Name: FragmentShader.glsl
-Copyright © 2015
-Original authors: Brockton Roth
+Copyright © 2015, 2019
+Original authors: Brockton Roth, Niko Procopi
 Written under the supervision of David I. Schwartz, Ph.D., and
 supported by a professional development seed grant from the B. Thomas
 Golisano College of Computing & Information Sciences
@@ -26,10 +26,18 @@ https://github.com/LWJGL/lwjgl3-wiki/wiki/2.6.1.-Ray-tracing-with-OpenGL-Compute
 
 Description:
 This program serves to demonstrate the concept of ray tracing. This
-example is very basic, storing the triangles as a hardcoded constant
-in the Fragment Shader itself. It draws a quad with the Vertex Shader,
-and renders each pixel via tracing a ray through that pixel from the camera
-position. There is no lighting.
+builds off a previous Intermediate Ray Tracer, adding in reflections. 
+There are four point lights, specular and diffuse lighting, and shadows. 
+It is important to note that the light positions and triangles being 
+rendered are all hardcoded in the shader itself. Usually, you would 
+pass those values into the Fragment Shader via a Uniform Buffer.
+
+WARNING: Framerate may suffer depending on your hardware. This is a normal 
+problem with Ray Tracing. If it runs too slowly, try removing the second 
+cube from the triangles array in the Fragment Shader (and also adjusting 
+NUM_TRIANGLES accordingly). There are many optimization techniques out 
+there, but ultimately Ray Tracing is not typically used for Real-Time 
+rendering.
 */
 
 #version 400 // Identifies the version of the shader, this line must be on a separate line from the rest of the shader code
@@ -90,11 +98,11 @@ const triangle triangles[] = triangle[26](
 
 	/* Cube Box 2 */
 	/* Back face triangles */
-	triangle(vec3(2.5, 3.5, 2.5), vec3(3.5, 3.5, 2.5), vec3(2.5, 4.5, 2.5), vec3(0.0, 0.0, -1.0), vec3(1.0, 0.0, 0.0)),
-	triangle(vec3(3.5, 3.5, 2.5), vec3(3.5, 4.5, 2.5), vec3(2.5, 4.5, 2.5), vec3(0.0, 0.0, -1.0), vec3(1.0, 0.0, 0.0)),
+	triangle(vec3(2.5, 3.5, 2.5), vec3(3.5, 3.5, 2.5), vec3(2.5, 4.5, 2.5), vec3(0.0, 0.0, 1.0), vec3(1.0, 0.0, 0.0)),
+	triangle(vec3(3.5, 3.5, 2.5), vec3(3.5, 4.5, 2.5), vec3(2.5, 4.5, 2.5), vec3(0.0, 0.0, 1.0), vec3(1.0, 0.0, 0.0)),
 	/* Front face triangles*/
-	triangle(vec3(2.5, 3.5, 1.5), vec3(2.5, 4.5, 1.5), vec3(3.5, 4.5, 1.5), vec3(0.0, 0.0, 1.0), vec3(1.0, 0.0, 0.0)),
-	triangle(vec3(2.5, 3.5, 1.5), vec3(3.5, 4.5, 1.5), vec3(3.5, 3.5, 1.5), vec3(0.0, 0.0, 1.0), vec3(1.0, 0.0, 0.0)),
+	triangle(vec3(2.5, 3.5, 1.5), vec3(2.5, 4.5, 1.5), vec3(3.5, 4.5, 1.5), vec3(0.0, 0.0, -1.0), vec3(1.0, 0.0, 0.0)),
+	triangle(vec3(2.5, 3.5, 1.5), vec3(3.5, 4.5, 1.5), vec3(3.5, 3.5, 1.5), vec3(0.0, 0.0, -1.0), vec3(1.0, 0.0, 0.0)),
 	/* Right face triangles */
 	triangle(vec3(3.5, 3.5, 1.5), vec3(3.5, 4.5, 1.5), vec3(3.5, 4.5, 2.5), vec3(1.0, 0.0, 0.0), vec3(1.0, 0.0, 0.0)),
 	triangle(vec3(3.5, 3.5, 1.5), vec3(3.5, 4.5, 2.5), vec3(3.5, 3.5, 2.5), vec3(1.0, 0.0, 0.0), vec3(1.0, 0.0, 0.0)),
@@ -187,17 +195,23 @@ bool intersectTriangles(vec3 origin, vec3 dir, out hitinfo info)
 {
 	// Start our variables for determining the closest triangle.
 	// Smallest will be the smallest distance between the origin point and the point of collision.
-	
-	// we initialize "smallest", with the largest possible distance we can have,
-	// because we assume we will find something smaller to replace the maximum distance
-	float smallest = MAX_SCENE_BOUNDS;
-	
 	// Found just determines whether or not there was a collision at all.
+	float smallest = MAX_SCENE_BOUNDS;
 	bool found = false;
 
 	// For each triangle.
 	for(int i = 0; i < NUM_TRIANGLES; i++)
 	{
+		// If the dot product is 0, the vectors are 90 degrees apart (orthogonal or perpendicular).
+		// If the dot product is less than 0, the vectors are more than 90 degrees apart.
+		// If the dot product is greater than 0, the vectors are less than 90 degrees apart.
+
+		// If our direction can't hit the triangle
+		// skip this triangle, and check the next triangle
+		
+		if(dot(triangles[i].normal, dir) > 0)
+			continue;
+
 		// Compute distance t using above function to determine how far along the ray the triangle collides.
 		float t = rayIntersectsTriangle(origin, dir, triangles[i].a, triangles[i].b, triangles[i].c);
 
@@ -222,24 +236,31 @@ bool intersectTriangles(vec3 origin, vec3 dir, out hitinfo info)
 }
 
 // Trace a ray from an origin point in a given direction and calculate/return the color value of the point that ray hits.
-vec4 trace(vec3 origin, vec3 dir)
+vec4 trace(vec3 origin, vec3 dirEyeToTriangle)
 {
 	// Create object to get our hitinfo back out of the intersectTriangles function.
-	hitinfo i;
+	hitinfo eyeHitTriangle;
 
 	// If this ray intersects any of the triangles in the scene.
-	if (intersectTriangles(origin, dir, i))
+	if (intersectTriangles(origin, dirEyeToTriangle, eyeHitTriangle))
 	{
-		// Return the final pixel color based on the triangle's color.
-		return vec4(triangles[i.index].color.rgb, 1.0);
+		// Create a pixColor variable, which will determine the output color of this pixel. Start with some ambient light.
+		vec3 pixColor = triangles[eyeHitTriangle.index].color;
+		
+		// Return the final pixel color.		
+		return vec4(pixColor.rgb, 1.0);
 	}
 
 	// If the ray doesn't hit any triangles, then this ray sees nothing and thus:
-	return vec4(0.0, 0.0, 0.0, 1.0);
+	// Return 0, which can be replaced with skybox
+	return vec4(vec3(0), 1.0);
 }
 
 void main(void)
 {
+	// Keep in mind, "textureCoord" does not actually mean textures being mapped onto the surface of geometry,
+	// UV coordinates and textures will come in a future tutorial
+
 	// This is easy. Using the textureCoord, you interpolate between the four corner rays to get a ray (dir) that goes through a point in the screen.
 	// For your mental image, imagine this shader runes once for every single pixel on your screen.
 	// Every time it runs, dir is the ray that goes from the camera's position, through the pixel that it is rendering. Thus, we are tracing a ray through every pixel 
